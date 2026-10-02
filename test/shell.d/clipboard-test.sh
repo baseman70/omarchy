@@ -495,7 +495,7 @@ pass "clipboard file paste helper copy-only copies file content"
 [[ ! -e "$TMPDIR/wtype" ]] || fail "clipboard file paste helper copy-only skips paste keystroke"
 pass "clipboard file paste helper copy-only skips paste keystroke"
 
-rm -f "$TMPDIR/wtype"
+rm -f "$TMPDIR/copied" "$TMPDIR/wtype"
 WL_COPY_OUT="$TMPDIR/copied" WTYPE_OUT="$TMPDIR/wtype" PATH="$TMPDIR/bin:$PATH" \
   "$ROOT/bin/omarchy-clipboard-paste-file" image/png "$TMPDIR/image.png"
 
@@ -509,7 +509,7 @@ pass "clipboard file paste helper pastes files with ctrl v"
 pass "clipboard file paste helper fails on missing arguments"
 
 rm -f "$TMPDIR/copied" "$TMPDIR/wtype"
-(! PATH="$TMPDIR/bin:$PATH" "$ROOT/bin/omarchy-clipboard-paste-file" image/png "$TMPDIR/nonexistent.png" 2>/dev/null) || fail "clipboard file paste helper fails on unreadable file"
+(! WL_COPY_OUT="$TMPDIR/copied" WTYPE_OUT="$TMPDIR/wtype" PATH="$TMPDIR/bin:$PATH" "$ROOT/bin/omarchy-clipboard-paste-file" image/png "$TMPDIR/nonexistent.png" 2>/dev/null) || fail "clipboard file paste helper fails on unreadable file"
 [[ ! -e "$TMPDIR/copied" ]] || fail "clipboard file paste helper does not copy unreadable file"
 [[ ! -e "$TMPDIR/wtype" ]] || fail "clipboard file paste helper does not paste when file unreadable"
 pass "clipboard file paste helper fails safely on unreadable file"
