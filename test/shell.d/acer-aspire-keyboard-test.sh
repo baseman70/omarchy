@@ -32,7 +32,7 @@ SH
 
 cat >"$test_tmp/bin/omarchy-cmd-present" <<'SH'
 #!/bin/bash
-if [[ $1 == "${TEST_CMD_MISSING:-}" ]]; then
+if [[ " ${TEST_CMD_MISSING:-} " == *" $1 "* ]]; then
   exit 1
 fi
 command -v "$1" >/dev/null 2>&1
@@ -46,8 +46,12 @@ SH
 
 cat >"$test_tmp/bin/limine-mkinitcpio" <<'SH'
 #!/bin/bash
-printf 'limine-mkinitcpio\n' >>"$CALL_LOG"
-exit "${TEST_MKINITCPIO_STATUS:-0}"
+if [[ " ${TEST_CMD_MISSING:-} " == *" limine-mkinitcpio "* ]]; then
+  exit 127
+else
+  printf 'limine-mkinitcpio\n' >>"$CALL_LOG"
+  exit "${TEST_MKINITCPIO_STATUS:-0}"
+fi
 SH
 
 cat >"$test_tmp/bin/omarchy-state" <<'SH'
@@ -123,6 +127,7 @@ pass "the leaf no-ops on other hardware"
 
 # Migration execution test
 running_cmdline_file="$test_tmp/proc_cmdline"
+rebuild_marker="$test_tmp/var/lib/omarchy/migrations/1788707260"
 
 run_migration() {
   : >"$call_log"
@@ -136,21 +141,23 @@ run_migration() {
     TEST_MKINITCPIO_STATUS="${5:-0}" \
     OMARCHY_DMI_SYS_VENDOR="$vendor_file" \
     OMARCHY_ACER_ASPIRE_LIMINE_CONF="$drop_in_file" \
+    OMARCHY_ACER_ASPIRE_REBUILD_MARKER="$rebuild_marker" \
     OMARCHY_RUNNING_CMDLINE="$running_cmdline_file" \
-    bash -euo pipefail "$migration" >/dev/null
+    bash -euo pipefail "$migration" >/dev/null 2>&1
 }
 
 # 1. Migration on unconfigured machine: drop-in created, limine-update run, reboot-required set
-rm -f "$drop_in_file"
+rm -f "$drop_in_file" "$rebuild_marker"
 printf 'BOOT_IMAGE=/vmlinuz-linux root=/dev/sda1 rw\n' >"$running_cmdline_file"
 run_migration || fail "the migration executes on matching hardware"
 [[ -f $drop_in_file ]] || fail "migration created drop-in"
 grep -q '^limine-update$' "$call_log" || fail "migration executed limine-update"
+[[ -e $rebuild_marker ]] || fail "migration recorded the rebuild"
 grep -q 'state set reboot-required' "$call_log" || fail "migration requested reboot"
 pass "the migration creates drop-in, rebuilds boot config, and requests reboot"
 
 # 2. Migration on already-running quirk machine: rebuilds drop-in but does not need reboot
-rm -f "$drop_in_file"
+rm -f "$drop_in_file" "$rebuild_marker"
 printf 'BOOT_IMAGE=/vmlinuz-linux root=/dev/sda1 i8042.reset atkbd.reset acpi_osi=Linux rw\n' >"$running_cmdline_file"
 run_migration || fail "the migration executes when quirks already running"
 grep -q '^limine-update$' "$call_log" || fail "migration executed limine-update"
@@ -158,27 +165,49 @@ grep -q 'state set reboot-required' "$call_log" && fail "migration skipped reboo
 pass "the migration skips reboot request when quirks are already active in cmdline"
 
 # 3. Migration fallback to limine-mkinitcpio when limine-update is not present
-rm -f "$drop_in_file"
+rm -f "$drop_in_file" "$rebuild_marker"
 printf 'BOOT_IMAGE=/vmlinuz-linux root=/dev/sda1 rw\n' >"$running_cmdline_file"
 run_migration "Aspire AG15-42P" "Acer" "limine-update" || fail "the migration falls back to limine-mkinitcpio"
 grep -q '^limine-mkinitcpio$' "$call_log" || fail "migration executed limine-mkinitcpio fallback"
 pass "the migration falls back to limine-mkinitcpio when limine-update is absent"
 
-# 4. Migration fails and avoids marking reboot-required if bootloader rebuild fails
-rm -f "$drop_in_file"
+# 4. A failed rebuild fails the migration and is retried on the next run
+rm -f "$drop_in_file" "$rebuild_marker"
 run_migration "Aspire AG15-42P" "Acer" "" "1" && fail "the migration must fail when limine-update fails"
+grep -q '^limine-update$' "$call_log" || fail "the failing run reached limine-update"
 grep -q 'state set reboot-required' "$call_log" && fail "failing rebuild must not mark reboot-required"
-pass "the migration fails and avoids marking reboot-required when bootloader rebuild fails"
+[[ -e $rebuild_marker ]] && fail "failing rebuild must not be recorded"
+run_migration || fail "the retried migration succeeds"
+grep -q '^limine-update$' "$call_log" || fail "the retried migration rebuilds although the drop-in exists"
+grep -q 'state set reboot-required' "$call_log" || fail "the retried migration requests reboot"
+pass "the migration fails on a failed rebuild and rebuilds when retried"
 
-# 5. Migration idempotent: drop-in already present -> no rebuild needed
-printf 'KERNEL_CMDLINE[default]+=" i8042.reset atkbd.reset acpi_osi=Linux"\n' >"$drop_in_file"
-: >"$call_log"
-run_migration || fail "the migration succeeds on already configured machine"
-grep -q '^limine-update$' "$call_log" && fail "migration skipped rebuild when drop-in was already up to date"
-pass "the migration is idempotent and skips rebuild when drop-in is already present"
+# 5. With no Limine rebuild tool the migration fails rather than completing unapplied
+rm -f "$drop_in_file" "$rebuild_marker"
+run_migration "Aspire AG15-42P" "Acer" "limine-update limine-mkinitcpio" && fail "the migration must fail without a rebuild tool"
+[[ -e $rebuild_marker ]] && fail "a missing rebuild tool must not be recorded as a rebuild"
+grep -q 'state set reboot-required' "$call_log" && fail "a missing rebuild tool must not mark reboot-required"
+pass "the migration fails when no Limine rebuild tool is present"
 
-# 6. Migration on other hardware
-: >"$call_log"
+# 6. Migration idempotent: rebuild already recorded -> no second rebuild
+rm -f "$rebuild_marker"
+run_migration || fail "the migration succeeds on an unconfigured machine"
+run_migration || fail "the migration succeeds on an already configured machine"
+grep -q '^limine-update$' "$call_log" && fail "migration skipped rebuild when it was already recorded"
+pass "the migration is idempotent and skips rebuild once it is recorded"
+
+# 7. A drop-in removed after a recorded rebuild is restored and rebuilt, even after a failed attempt
+rm -f "$drop_in_file"
+run_migration "Aspire AG15-42P" "Acer" "" "1" && fail "the migration fails when the restoring rebuild fails"
+[[ -e $rebuild_marker ]] && fail "a failed restoring rebuild clears the old record"
+run_migration || fail "the migration restores a removed drop-in"
+[[ -f $drop_in_file ]] || fail "the migration rewrote the drop-in"
+grep -q '^limine-update$' "$call_log" || fail "the migration rebuilds after restoring the drop-in"
+pass "the migration rebuilds when it restores a removed drop-in"
+
+# 8. Migration on other hardware
+rm -f "$drop_in_file" "$rebuild_marker"
 run_migration "ThinkPad X1" "Lenovo" || fail "the migration runs cleanly on other hardware"
 [[ -s $call_log ]] && fail "the migration does nothing on other hardware"
+[[ -f $drop_in_file ]] && fail "the migration writes no drop-in on other hardware"
 pass "the migration no-ops on other hardware"
