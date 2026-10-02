@@ -1,4 +1,4 @@
-# Keyboard fix for Acer Aspire Go 15 laptops.
+# Keyboard fix for the Acer Aspire Go 15 AG15-42P.
 #
 # The internal keyboard drops out ~5 seconds post-boot on Linux kernels
 # due to an i8042 / atkbd ACPI conflict with acer-wmi. Adding i8042.reset,
