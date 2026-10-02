@@ -71,8 +71,8 @@ run_detector() {
 run_detector || fail "the detector matches Acer Aspire AG15-42P"
 pass "the detector matches Acer Aspire AG15-42P"
 
-run_detector "Aspire Go 15" || fail "the detector matches Acer Aspire Go 15"
-pass "the detector matches Acer Aspire Go 15"
+run_detector "Aspire Go 15" && fail "the detector rejects other Aspire Go 15 models"
+pass "the detector rejects other Aspire Go 15 models"
 
 run_detector "Aspire AG15-42P" "Dell" && fail "the detector rejects non-Acer vendor"
 pass "the detector rejects non-Acer vendor"
