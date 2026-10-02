@@ -21,9 +21,10 @@ if omarchy-hw-acer-aspire-go-15; then
       sudo limine-mkinitcpio
     fi
     sudo install -Dm644 /dev/null "$rebuild_marker"
+  fi
 
-    if [[ ! -r $running_cmdline ]] || ! grep -q 'i8042\.reset' "$running_cmdline"; then
-      omarchy-state set reboot-required
-    fi
+  # reboot-required is per user, so ask even when another user did the rebuild.
+  if [[ ! -r $running_cmdline ]] || ! grep -q 'i8042\.reset' "$running_cmdline"; then
+    omarchy-state set reboot-required
   fi
 fi

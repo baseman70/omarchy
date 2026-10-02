@@ -196,6 +196,13 @@ run_migration || fail "the migration succeeds on an already configured machine"
 grep -q '^limine-update$' "$call_log" && fail "migration skipped rebuild when it was already recorded"
 pass "the migration is idempotent and skips rebuild once it is recorded"
 
+# 6b. A user whose migration finds another user's rebuild still gets the reboot request
+printf 'BOOT_IMAGE=/vmlinuz-linux root=/dev/sda1 rw\n' >"$running_cmdline_file"
+run_migration || fail "the migration succeeds after another user's rebuild"
+grep -q '^limine-update$' "$call_log" && fail "the migration does not repeat another user's rebuild"
+grep -q 'state set reboot-required' "$call_log" || fail "the migration requests reboot after another user's rebuild"
+pass "the migration requests reboot for a user whose rebuild was done by another"
+
 # 7. A drop-in removed after a recorded rebuild is restored and rebuilt, even after a failed attempt
 rm -f "$drop_in_file"
 run_migration "Aspire AG15-42P" "Acer" "" "1" && fail "the migration fails when the restoring rebuild fails"
