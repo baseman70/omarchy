@@ -110,8 +110,8 @@ run_leaf() {
 run_leaf || fail "the leaf executes on matching hardware"
 [[ -f $drop_in_file ]] || fail "the leaf creates the limine drop-in file"
 grep -q 'i8042\.reset' "$drop_in_file" || fail "the drop-in contains i8042.reset"
-grep -q 'atkbd\.reset' "$drop_in_file" || fail "the drop-in contains atkbd.reset"
-grep -q 'acpi_osi=Linux' "$drop_in_file" || fail "the drop-in contains acpi_osi=Linux"
+grep -q 'atkbd\.reset' "$drop_in_file" && fail "the drop-in should not contain atkbd.reset"
+grep -q 'acpi_osi=Linux' "$drop_in_file" && fail "the drop-in should not contain acpi_osi=Linux"
 pass "the leaf creates the limine drop-in configuration"
 
 # Leaf idempotency
@@ -158,7 +158,7 @@ pass "the migration creates drop-in, rebuilds boot config, and requests reboot"
 
 # 2. Migration on already-running quirk machine: rebuilds drop-in but does not need reboot
 rm -f "$drop_in_file" "$rebuild_marker"
-printf 'BOOT_IMAGE=/vmlinuz-linux root=/dev/sda1 i8042.reset atkbd.reset acpi_osi=Linux rw\n' >"$running_cmdline_file"
+printf 'BOOT_IMAGE=/vmlinuz-linux root=/dev/sda1 i8042.reset rw\n' >"$running_cmdline_file"
 run_migration || fail "the migration executes when quirks already running"
 grep -q '^limine-update$' "$call_log" || fail "migration executed limine-update"
 grep -q 'state set reboot-required' "$call_log" && fail "migration skipped reboot request when quirks already active"
