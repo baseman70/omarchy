@@ -23,12 +23,14 @@ fi
 # remaining recovery deadline during relock.
 lock_ipc_timeout=10
 
+# The outer timeout bounds the whole call: omarchy-shell can spend its own
+# timeout on the socket and then the same again falling back to qs ipc.
 lock_ipc() {
   local timeout=$1
   shift
   OMARCHY_PATH="$session_omarchy_path" \
     OMARCHY_SHELL_IPC_TIMEOUT="${timeout}s" \
-    omarchy-shell "$@"
+    timeout --kill-after=0.1s "${timeout}s" omarchy-shell "$@"
 }
 
 # Restarting a live lock client would kill the lock screen and strand the
